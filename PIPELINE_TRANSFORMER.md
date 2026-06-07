@@ -16,7 +16,7 @@ The full solution uses a **Mixture-of-Experts (MoE)** ensemble of four parallel 
 
 This document specifies **Expert 2** end-to-end: inputs, feature engineering, model architecture, and validation protocol.
 
-The pipeline is intentionally **multimodal**: it fuses tabular covariates, free-text DOH press releases, and optional MAT-density image embeddings through a shared attention layer before a per-category regression head.
+The pipeline is intentionally **multimodal**: it fuses tabular covariates, free-text DOH press releases, and MAT-density image embeddings through a shared transformer before per-category regression heads.
 
 ---
 
@@ -33,7 +33,7 @@ The pipeline is intentionally **multimodal**: it fuses tabular covariates, free-
 
 **Target:** `rate_per_10000_ed_visits` (float, ≥ 0). Regression task.
 **Scoring metric:** block-averaged MAE — mean of per-category MAEs across `all_drugs`, `all_opioids`, `all_stimulants`.
-**Key join:** `(period_id, jurisdiction)` links covariates ↔ labels ↔ images; the third key `overdose_category` splits the target into three parallel prediction tasks.
+**Key join:** `(period_id, jurisdiction)` links covariates ↔ labels ↔ images; `overdose_category` splits the target into three parallel tasks handled by three heads.
 
 ---
 
@@ -41,98 +41,111 @@ The pipeline is intentionally **multimodal**: it fuses tabular covariates, free-
 
 | Fact | Implication |
 |---|---|
-| **Panel structure** — 51 jurisdictions × N periods | Positional encoding on temporal rank; cross-jurisdiction attention is not needed (independent rows) |
+| **Panel structure** — 51 jurisdictions × N periods | Period-rank positional signal; rows are independent across jurisdictions |
 | **Three nested drug categories** — `all_drugs ⊃ all_opioids`, `all_stimulants` partially overlapping | Shared backbone; separate regression heads per category to capture distribution shift |
-| **Free-text column** — `state_doh_release`, up to 500 tokens of DOH press-release language | Direct semantic signal unavailable to tree models; motivates a text encoder sub-tower |
-| **MAT density images** — 256×256 PNG spatial patterns | Spatial prescriber distribution can proxy access barriers; motivates a lightweight vision encoder |
-| **Google Trends × 5** — fentanyl, opioid, overdose, naloxone, methamphetamine | Pairwise products capture co-search dynamics (e.g. fentanyl + naloxone spike = harm-reduction awareness event) |
-| **Target suppression** — `NaN` means cell is suppressed, not zero | Suppressed rows dropped from training; never imputed to zero |
-| **Temporal ordering is recoverable** — cross-jurisdiction mean of `temp_avg_f` proxies calendar season | Enables lag features and period-rank positional encoding |
-| **CPU-only environment** — no GPU | Model must fit in CPU memory; text/vision encoders limited to lightweight checkpoints or static embeddings |
+| **Free-text column** — `state_doh_release`, up to 500 tokens of DOH press-release language | Rich semantic signal unavailable to tree models; pre-trained language model captures policy language meaning |
+| **MAT density images** — 256×256 PNG spatial heatmaps | Prescriber access patterns invisible in scalar covariates; vision encoder extracts spatial features |
+| **Google Trends × 5** — fentanyl, opioid, overdose, naloxone, methamphetamine | Pairwise products capture co-search dynamics (e.g. fentanyl × naloxone spike = harm-reduction event) |
+| **Target suppression** — `NaN` means suppressed, not zero | NaN cells masked from loss computation; never imputed to zero |
+| **Temporal ordering recoverable** — cross-jurisdiction mean of `temp_avg_f` proxies calendar season | Enables lag features and period-rank positional signal; computed globally across train + val |
+| **A100 GPU available** — Colab / Kaggle compute | Full pre-trained encoders viable; bf16 mixed precision; deep model (6 layers) within budget |
 
 ---
 
 ## 4. Engineered Feature Set
 
 All transforms are **fit on train, applied to val** with no leakage.
+Pre-computed embeddings are cached to `embeddings/` via `src/vectorize.py` and loaded by `src/features.py` at training time.
 
 ### 4a. Numeric tabular features
 
 | Feature | Source | Transform |
 |---|---|---|
 | `unemployment_rate` | covariates | as-is |
-| `log1p_labor_force` | `labor_force` | log1p |
-| `temp_avg_f` | covariates | as-is (NaN → jurisdiction-period median from train) |
+| `log_labor_force` | `labor_force` | log1p |
+| `temp_avg_f` | covariates | as-is |
 | `precip_in` | covariates | as-is |
 | `gtrends_overdose`, `gtrends_fentanyl`, `gtrends_naloxone`, `gtrends_opioid`, `gtrends_methamphetamine` | covariates | as-is |
-| `gt_fentanyl_x_opioid` | product | `gtrends_fentanyl × gtrends_opioid` |
-| `gt_overdose_x_naloxone` | product | `gtrends_overdose × gtrends_naloxone` |
+| `gtrends_fentanyl_x_opioid` | product | `gtrends_fentanyl × gtrends_opioid` |
+| `gtrends_overdose_x_naloxone` | product | `gtrends_overdose × gtrends_naloxone` |
+| `census_division` | jurisdiction → int (1–9) | US Census division map |
 | `period_rank` | `temp_avg_f` cross-jurisdiction mean rank | integer temporal index |
-| `rate_lag_1`, `rate_lag_2` | train target, per (jurisdiction, category) | previous period's rate; `NaN` for earliest periods → median impute |
+| `{cat}_lag1`, `{cat}_lag2` | train target per (jurisdiction, category) | backward-asof merge; NaN for earliest periods |
+| `aux_{drug}` | aux overdose categories pivoted wide | heroin, fentanyl, cocaine, methamphetamine, benzodiazepine rates |
 
-All numeric NaN → training-set median (per column), applied after feature engineering.
+All numeric NaN → training-set median after feature engineering.
 
 ### 4b. Text features — `state_doh_release`
 
-Two options (select one at runtime based on available RAM):
+| Mode | Method | Dim | When used |
+|---|---|---|---|
+| **Pre-trained (default)** | `all-mpnet-base-v2` sentence-transformer, L2-normalised | **768** | `embeddings/text_*.csv` present |
+| Fallback | TF-IDF (5 000 vocab, sublinear_tf, bigrams) → TruncatedSVD | 32 | Cache absent |
 
-| Mode | Method | Output dim |
-|---|---|---|
-| **Static (default)** | TF-IDF (5 000 vocab, sublinear_tf) → TruncatedSVD (32 components), fit on train | 32 |
-| **Encoder (optional)** | `all-MiniLM-L6-v2` sentence-transformers (CPU, ~90 MB) → mean-pool | 384 |
-
-Empty string → zero vector.
+Run `python -m src.vectorize` once on A100 to populate the cache. Empty string → zero vector.
 
 ### 4c. Image features — MAT density
 
-| Mode | Method | Output dim |
-|---|---|---|
-| **Static (default)** | Flatten 256×256×3 → PCA (64 components) fit on train images | 64 |
-| **Encoder (optional)** | `timm` `efficientnet_lite0` (CPU, ~15 MB) — global average pool of last conv layer | 320 |
+| Mode | Method | Dim | When used |
+|---|---|---|---|
+| **Pre-trained (default)** | `efficientnet_b2` (timm, ImageNet), global avg pool | **1408** | `embeddings/img_*.csv` present |
+| Fallback | Resize 32×32 RGB → flatten → PCA (64 components, fit on train) | 64 | Cache absent |
 
-Missing image → zero vector.
+Missing image → zero vector in both modes.
 
-### 4d. Final feature vector per row
+### 4d. Feature vector per row
 
 ```
-[numeric (14 dims)] + [text (32 or 384 dims)] + [image (64 or 320 dims)]
-→ concatenated and passed through a learned linear projection to d_model
+Numeric  (~24 dims)  ──┐
+Text     (768 dims)  ──┼──► separate learned projections → d_model = 256 each
+Image    (1408 dims) ──┘
+          ↓
+[CLS, token_num, token_text, token_img]  — 4 tokens, each 256-dim
 ```
 
 ---
 
 ## 5. Modeling Plan
 
-### Architecture: FT-Transformer with modality projection
+### Architecture: 6-layer FT-Transformer (A100 build)
 
 ```
-Input row
-  ├─ Numeric block (14)  ──┐
-  ├─ Text block  (32/384) ──┼──► Linear projection → d_model=128, per modality token
-  └─ Image block (64/320) ──┘
+Input row (period_id × jurisdiction)
+  ├─ Numeric  (~24)  → Linear(n, 512) → GELU → Dropout → Linear(512, 256) → LayerNorm
+  ├─ Text     (768)  → Linear(768, 512) → GELU → Dropout → Linear(512, 256) → LayerNorm
+  └─ Image    (1408) → Linear(1408, 512) → GELU → Dropout → Linear(512, 256) → LayerNorm
 
-  [3 tokens] → Transformer encoder (2 layers, 4 heads, d_ff=256)
-             → [CLS] token pooling
-             → Dropout(0.1)
-             → Category-specific linear head × 3
-                 ├─ head_all_drugs      → scalar
-                 ├─ head_all_opioids    → scalar
-                 └─ head_all_stimulants → scalar
+[CLS(256), t_num(256), t_text(256), t_img(256)]  — 4 tokens
+          ↓
+  TransformerEncoder × 6 layers
+    d_model=256, n_heads=8, d_ff=1024
+    dropout=0.2, activation=GELU
+    norm_first=True  ← pre-norm (more stable at depth ≥ 4)
+          ↓
+  CLS token output → LayerNorm → Dropout(0.2)
+          ↓
+  head_all_drugs      → scalar
+  head_all_opioids    → scalar
+  head_all_stimulants → scalar
 ```
 
-**Loss:** Huber loss (delta=1.0) per head, summed. Huber is less sensitive to suppression-boundary outliers than MSE.
+**Loss:** Huber (δ=1.0), NaN-masked per cell. Suppressed rows contribute zero to the gradient.
 
-**Optimizer:** AdamW, lr=3e-4, weight_decay=1e-4, cosine annealing over 100 epochs.
+**Optimizer:** AdamW, lr=3e-4, weight_decay=1e-3.
 
-**Batch size:** 64 rows (shuffle each epoch within fold).
+**Scheduler:** `CosineAnnealingWarmRestarts(T_0=100, T_mult=2)` — learning rate resets at epochs 100, 200, 400. Helps escape local minima on the small dataset.
 
-**Training rule:** early stopping on fold-held-out MAE, patience=15 epochs.
+**Precision:** bf16 mixed precision on CUDA (`torch.amp.autocast`), fp32 fallback on CPU.
 
-**Implementation:** PyTorch (CPU). All matrix ops on float32.
+**Batch size:** 128. **Max epochs:** 500. **Early stopping patience:** 50.
+
+**Augmentation:** Gaussian noise N(0, 0.02) added to numeric features each training batch only.
+
+**Compute:** ~20–30 min for 5-fold CV on A100. Well within 9-hour budget.
 
 ### Fallback
 
-If PyTorch is unavailable or training exceeds 90 minutes: fall back to an MLP (2 hidden layers, 256 units, ReLU, Dropout 0.1) trained with scikit-learn's `MLPRegressor` on the same concatenated feature vector. One model per category.
+If PyTorch is unavailable or the 90-minute wall-clock limit is hit: sklearn `MLPRegressor` (2 × 256 hidden units) trained per category on the concatenated feature vector.
 
 ---
 
@@ -140,38 +153,52 @@ If PyTorch is unavailable or training exceeds 90 minutes: fall back to an MLP (2
 
 ```
 GroupKFold(n_splits=5)
-  groups = period_rank   (temporal group — prevents future-period leakage)
+  groups = period_rank   (temporal — prevents future-period leakage)
 ```
 
 For each fold:
-1. Fit all feature transforms (TF-IDF/PCA/encoder) on train split only.
-2. Train the transformer model on train split.
-3. Generate OOF predictions on held-out split.
+1. Feature transforms (TF-IDF/PCA if no cache) fit on train split only.
+2. Pre-computed embeddings loaded from cache and index-aligned on (period_id, jurisdiction).
+3. Model trained on train split; early stopping on held-out Huber loss.
+4. OOF predictions collected for va_idx rows.
 
 **Metrics reported:**
 - OOF MAE per category (`all_drugs`, `all_opioids`, `all_stimulants`)
 - Block-averaged OOF MAE (competition metric)
-- Per-fold MAE to detect temporal drift
+- Total wall-clock time
 
 **Output artefact:**
 
 ```python
-expert_transformer = template[['row_id']].copy()
-expert_transformer['rate_per_10000_ed_visits'] = val_preds.clip(lower=0)
-assert expert_transformer.isna().sum().sum() == 0
-expert_transformer.to_csv('expert_transformer.csv', index=False)
+# written by src/predict.py
+expert_transformer.csv   — row_id, rate_per_10000_ed_visits (918 rows, 0 NaN)
 ```
 
-This file is passed to the MoE combiner alongside the other three expert files.
+Passed to the MoE combiner alongside the other three expert files.
 
 ---
 
-## 7. Main Takeaway
+## 7. Run Order
 
-The transformer expert is the **multimodal, semantics-aware** leg of the ensemble. Its primary contribution over gradient-boosted trees is:
+```bash
+# 1. Pre-compute embeddings (run once on A100, ~5–10 min)
+python -m src.vectorize
 
-1. **Text semantics** — the `state_doh_release` column contains unstructured policy language (new naloxone distribution programs, fentanyl test strip legalization, etc.) that TF-IDF alone underweights; a learned text projection recovers these signals.
-2. **Spatial prescriber patterns** — the MAT density heatmaps encode geographic access barriers that are invisible in the scalar covariates.
-3. **Cross-modality attention** — joint attention over tabular, text, and image tokens allows the model to learn interactions (e.g., low MAT density + high fentanyl search interest → elevated stimulant/opioid co-use rate).
+# 2. Train + produce expert predictions (~20–30 min on A100)
+python -m src.predict
+```
 
-Expected OOF MAE target: within 10–15% of the GBM baseline on its own; the MoE combination should beat both individually via diversity.
+`embeddings/` is gitignored — generate it locally before training.
+
+---
+
+## 8. Main Takeaway
+
+The transformer expert is the **multimodal, semantics-aware** leg of the ensemble. Its primary advantages over the tree-based expert (Eddy) are:
+
+1. **Deep text understanding** — `all-mpnet-base-v2` encodes actual policy meaning from DOH press releases (naloxone access expansions, fentanyl test strip legalisation, etc.) rather than word frequencies.
+2. **Spatial prescriber patterns** — EfficientNet-B2 features from the MAT density heatmaps encode geographic access barriers invisible in the scalar covariates.
+3. **Cross-modality attention** — 6 layers of self-attention allow text, image, and tabular signals to inform each other (e.g. sparse MAT coverage + rising fentanyl search interest → amplified overdose rate).
+4. **Non-linear feature interactions** — depth and width (d_model=256, d_ff=1024) capture interactions the other pipelines may linearise away.
+
+Expected OOF MAE: within 10–15% of the tree-based baseline individually; diversity with Eddy's GBM and William's lag models should produce a meaningful MoE lift.
