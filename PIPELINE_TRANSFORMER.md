@@ -9,10 +9,10 @@ The full solution uses a **Mixture-of-Experts (MoE)** ensemble of four parallel 
 
 | Expert | Owner | Approach | Output file |
 |---|---|---|---|
-| 1 | — | Gradient-boosted trees (LGB / XGB / CatBoost) | `expert_gbm.csv` |
-| **2** | **Lenny** | **Transformer / neural regression** | **`expert_transformer.csv`** |
-| 3 | — | — | `expert_3.csv` |
-| 4 | — | — | `expert_4.csv` |
+| 1 | Jasmine | Healthcare-informed pipeline — public-health reasoning, state/time patterns, overdose surveillance interpretation, robust models | `expert_jasmine.csv` |
+| **2** | **Lenny** | **Transformer / neural regression — FT-Transformer with regression head** | **`expert_transformer.csv`** |
+| 3 | William | Classical statistics pipeline — lag models, rolling averages, fixed effects, ridge/lasso, time-series baselines | `expert_william.csv` |
+| 4 | Eddy | Tree-based ML pipeline — Random Forest, XGBoost, LightGBM, CatBoost with feature engineering | `expert_eddy.csv` |
 
 This document specifies **Expert 2** end-to-end: inputs, feature engineering, model architecture, and validation protocol.
 

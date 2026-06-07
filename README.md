@@ -36,12 +36,12 @@ Input row (period_id × jurisdiction)
 
 ### MoE context
 
-| Expert | Branch | Approach |
-|---|---|---|
-| 1 | — | Gradient-boosted trees (LGB / XGB / CatBoost) |
-| **2** | **`lenny/transformer-expert`** | **FT-Transformer (this branch)** |
-| 3 | — | — |
-| 4 | — | — |
+| Expert | Owner | Branch | Approach | Output |
+|---|---|---|---|---|
+| 1 | Jasmine | `jasmine/healthcare-pipeline` | Healthcare-informed: public-health reasoning, state/time patterns, surveillance interpretation | `expert_jasmine.csv` |
+| **2** | **Lenny** | **`transformer-lenny`** | **FT-Transformer with regression head (this branch)** | **`expert_transformer.csv`** |
+| 3 | William | `william/classical-stats` | Classical stats: lag models, rolling averages, fixed effects, ridge/lasso | `expert_william.csv` |
+| 4 | Eddy | `eddy/tree-models` | Tree-based ML: Random Forest, XGBoost, LightGBM, CatBoost | `expert_eddy.csv` |
 
 ---
 
