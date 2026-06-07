@@ -49,6 +49,25 @@ N_IMAGE = 64
 IMG_SIZE = 32  # resize to 32×32 RGB before PCA
 
 
+def _load_cached_embeddings(path: str, keys: pd.DataFrame) -> np.ndarray | None:
+    """Load pre-computed embeddings from a CSV saved by src/vectorize.py.
+
+    Joins on (period_id, jurisdiction) so row order always matches keys,
+    regardless of the order they were saved. Returns None if file missing.
+    """
+    p = Path(path)
+    if not p.exists():
+        return None
+    df = pd.read_csv(p)
+    emb_cols = [c for c in df.columns if c not in ("period_id", "jurisdiction")]
+    merged = keys[["period_id", "jurisdiction"]].merge(df, on=["period_id", "jurisdiction"], how="left")
+    result = merged[emb_cols].values.astype(np.float32)
+    if np.isnan(result).any():
+        # Some rows missing from cache — can't use it
+        return None
+    return result
+
+
 def _base_features(df: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
     out["census_division"] = out["jurisdiction"].map(CENSUS_DIVISION).fillna(0).astype(int)
@@ -215,8 +234,21 @@ class FeaturePipeline:
         text_tr = self.text_svd.fit_transform(tr_tfidf).astype(np.float32)
         text_va = self.text_svd.transform(va_tfidf).astype(np.float32)
 
-        # Image: flat pixels → PCA (fit on train only, applied to val)
-        if data_root is not None:
+        # Text: try cached sentence-transformer embeddings first, fall back to TF-IDF+SVD
+        cache_text_tr = _load_cached_embeddings("embeddings/text_train.csv", tc[KEY])
+        cache_text_va = _load_cached_embeddings("embeddings/text_val.csv", vc[KEY])
+        if cache_text_tr is not None and cache_text_va is not None:
+            text_tr = cache_text_tr.astype(np.float32)
+            text_va = cache_text_va.astype(np.float32)
+        # (TF-IDF path already ran above and set text_tr / text_va — override if cache hit)
+
+        # Image: try cached EfficientNet embeddings first, fall back to pixel PCA
+        cache_img_tr = _load_cached_embeddings("embeddings/img_train.csv", tc[KEY])
+        cache_img_va = _load_cached_embeddings("embeddings/img_val.csv", vc[KEY])
+        if cache_img_tr is not None and cache_img_va is not None:
+            img_tr = cache_img_tr.astype(np.float32)
+            img_va = cache_img_va.astype(np.float32)
+        elif data_root is not None:
             from .data_loader import load_images_for
             train_images = load_images_for(data_root, "train", tc[["jurisdiction", "period_id"]], IMG_SIZE)
             val_images = load_images_for(data_root, "val", vc[["jurisdiction", "period_id"]], IMG_SIZE)
