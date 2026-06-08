@@ -2,7 +2,9 @@
 
 import numpy as np
 import pandas as pd
+import os
 from pathlib import Path
+from PIL import Image
 
 
 def find_data_dir():
@@ -69,16 +71,63 @@ def load_test_data(data_dir):
     return cov_df
 
 
-def load_pngs(sub_dir):
+def load_train_pngs(data_dir):
     """
-    Store PNG images
+    Store PNG images and image file names
+
+    Args:
+        sub_dir : Path to subdirectory containing image PNG files
     
+    Returns:
+        img_arrs  : Array of 256x256 gray-scale intensity arrays
+        img_names : List of image ID names
     """
+    # Specify sub directory
+    sub_dir = data_dir / "train" / "images" / "mat_density"
+    img_arrs = []
+
+    # Store names + paths and iterate through
+    img_names = os.listdir(sub_dir)
+    img_paths = [sub_dir / png for png in img_names]
+    for png in img_paths:
+        
+        # Load each image as single channel grayscale array
+        img = Image.open(png).convert("L")
+        arr  = np.asarray(img)
+        img_arrs.append(arr)
+    
+    img_arrs = np.asarray(img_arrs)
+    img_names = [name.replace(".png", "") for name in img_names]
+
+    return img_arrs, img_names
 
 
-    return 
+def load_test_pngs(data_dir):
+    """
+    Store PNG images and image file names
 
+    Args:
+        sub_dir : Path to subdirectory containing image PNG files
+    
+    Returns:
+        img_arrs  : Array of 256x256 gray-scale intensity arrays
+        img_names : List of image ID names
+    """
+    # Specify sub directory
+    sub_dir = data_dir / "val" / "images" / "mat_density"
+    img_arrs = []
 
-def load_submission_template(data_dir):
+    # Store names + paths and iterate through
+    img_names = os.listdir(sub_dir)
+    img_paths = [sub_dir / png for png in img_names]
+    for png in img_paths:
+        
+        # Load each image as single channel grayscale array
+        img = Image.open(png).convert("L")
+        arr  = np.asarray(img)
+        img_arrs.append(arr)
+    
+    img_arrs = np.asarray(img_arrs)
+    img_names = [name.replace(".png", "") for name in img_names]
 
-
+    return img_arrs, img_names
