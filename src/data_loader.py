@@ -55,9 +55,9 @@ def load_train_data(data_dir):
     return all_drugs_df, all_opioids_df, all_stims_df
 
 
-def load_test_data(data_dir):
+def load_val_data(data_dir):
     """
-    Return test covariates as a dataframe
+    Return validation covariates as a dataframe
 
     Args:
         data_dir : Path to data folder
@@ -102,7 +102,7 @@ def load_train_pngs(data_dir):
     return img_arrs, img_names
 
 
-def load_test_pngs(data_dir):
+def load_val_pngs(data_dir):
     """
     Store PNG images and image file names
 
