@@ -55,6 +55,12 @@ def run(
         print("Training (GroupKFold × 5)...")
     val_preds, _oof = train_and_predict(train_data, val_data, verbose=verbose)
 
+    # Post-processing: all_drugs is definitionally >= all_opioids and >= all_stimulants
+    # Enforce this constraint before writing — free improvement, no retraining needed
+    # CATEGORIES order: all_drugs=0, all_opioids=1, all_stimulants=2
+    val_preds[:, 0] = np.maximum(val_preds[:, 0], val_preds[:, 1])  # all_drugs >= all_opioids
+    val_preds[:, 0] = np.maximum(val_preds[:, 0], val_preds[:, 2])  # all_drugs >= all_stimulants
+
     # Expand (N_val_rows × 3) predictions into long format keyed on template columns
     val_keys = val_data["keys"]
     rows = []

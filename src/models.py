@@ -113,14 +113,21 @@ if _HAS_TORCH:
 
     # ── Loss & augmentation ──────────────────────────────────────────────────
 
+    # Head weights: all_drugs gets 2× because it dominates block-MAE and has 4× the variance
+    _HEAD_WEIGHTS = [2.0, 1.0, 1.0]
+
     def _masked_huber(pred, target, delta: float = 1.0):
-        """Huber loss over non-NaN cells only."""
-        mask = ~torch.isnan(target)
-        if not mask.any():
-            return pred.sum() * 0.0
-        p, t = pred[mask], target[mask]
-        err = torch.abs(p - t)
-        return torch.where(err <= delta, 0.5 * err ** 2, delta * (err - 0.5 * delta)).mean()
+        """Weighted Huber loss per head, NaN-masked. all_drugs weighted 2×."""
+        total = pred.sum() * 0.0
+        for i, w in enumerate(_HEAD_WEIGHTS):
+            mask = ~torch.isnan(target[:, i])
+            if not mask.any():
+                continue
+            p, t = pred[mask, i], target[mask, i]
+            err = torch.abs(p - t)
+            head_loss = torch.where(err <= delta, 0.5 * err ** 2, delta * (err - 0.5 * delta)).mean()
+            total = total + w * head_loss
+        return total
 
 
     def _add_noise(x: torch.Tensor, sigma: float = 0.02) -> torch.Tensor:

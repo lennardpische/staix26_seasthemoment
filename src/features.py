@@ -203,6 +203,22 @@ class FeaturePipeline:
             tc = tc.merge(aux_pivot, on=KEY, how="left")
             vc = vc.merge(aux_pivot, on=KEY, how="left")
 
+        # Jurisdiction historical mean + std per scoring category (fit on train only)
+        jur_stats = (
+            train_long[train_long["overdose_category"].isin(SCORING_CATEGORIES)]
+            .dropna(subset=["rate_per_10000_ed_visits"])
+            .groupby(["jurisdiction", "overdose_category"])["rate_per_10000_ed_visits"]
+            .agg(["mean", "std"])
+            .reset_index()
+        )
+        jur_pivot = jur_stats.pivot(index="jurisdiction", columns="overdose_category",
+                                    values=["mean", "std"])
+        jur_pivot.columns = [f"jur_{stat}_{cat}" for stat, cat in jur_pivot.columns]
+        jur_pivot = jur_pivot.reset_index()
+        jur_cols = [c for c in jur_pivot.columns if c != "jurisdiction"]
+        tc = tc.merge(jur_pivot, on="jurisdiction", how="left")
+        vc = vc.merge(jur_pivot, on="jurisdiction", how="left")
+
         # Lag features
         lag_cols: list[str] = []
         if train_long["period_rank"].nunique() > 1:
@@ -214,7 +230,7 @@ class FeaturePipeline:
                 prefix = cat.replace("all_", "")
                 lag_cols += [f"{prefix}_lag1", f"{prefix}_lag2"]
 
-        self.numeric_cols = _RAW_NUMERICS + _ENGINEERED + aux_cols + lag_cols
+        self.numeric_cols = _RAW_NUMERICS + _ENGINEERED + aux_cols + jur_cols + lag_cols
 
         # Numeric imputation
         num_tr = tc[self.numeric_cols].values.astype(np.float32)
