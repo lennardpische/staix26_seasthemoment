@@ -1,3 +1,5 @@
+"""Functions for XGBoost and LightGBM hyperparameter tuning"""
+
 import numpy as np
 import optuna
 import xgboost as xgb
