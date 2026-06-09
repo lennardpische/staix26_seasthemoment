@@ -18,6 +18,7 @@ def run(
     output_path: Path | str | None = None,
     use_images: bool = True,
     verbose: bool = True,
+    checkpoint_dir: str = "checkpoints",
 ) -> pd.DataFrame:
     """Full transformer expert pipeline → expert_transformer.csv.
 
@@ -53,7 +54,8 @@ def run(
 
     if verbose:
         print("Training (GroupKFold × 5)...")
-    val_preds, _oof = train_and_predict(train_data, val_data, verbose=verbose)
+    val_preds, _oof = train_and_predict(train_data, val_data, verbose=verbose,
+                                        checkpoint_dir=checkpoint_dir)
 
     # Post-processing: all_drugs is definitionally >= all_opioids and >= all_stimulants
     # Enforce this constraint before writing — free improvement, no retraining needed

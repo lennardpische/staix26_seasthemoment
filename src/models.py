@@ -233,17 +233,26 @@ def train_and_predict(
     val_data: dict,
     verbose: bool = True,
     deadline_secs: float = 90 * 60,
+    checkpoint_dir: str = "checkpoints",
 ) -> tuple[np.ndarray, np.ndarray]:
-    """GroupKFold (n=5) training.
+    """GroupKFold (n=5) training with per-fold checkpointing.
+
+    Completed folds are saved to checkpoint_dir and skipped on re-run.
+    Delete checkpoints/ to force a full retrain.
 
     Returns:
         val_preds  (N_val, 3)   — fold-ensemble predictions, clipped ≥ 0
         oof_preds  (N_train, 3) — out-of-fold predictions for CV reporting
     """
+    from pathlib import Path
+    ckpt = Path(checkpoint_dir)
+    ckpt.mkdir(exist_ok=True)
+
     t0 = time.time()
     device = "cuda" if (_HAS_TORCH and __import__("torch").cuda.is_available()) else "cpu"
     if verbose:
         print(f"  Device: {device}")
+        print(f"  Checkpoints: {ckpt.resolve()}")
 
     Xn, Xt, Xi = train_data["numeric"], train_data["text"], train_data["image"]
     Y = train_data["targets"]
@@ -256,6 +265,17 @@ def train_and_predict(
     use_torch = _HAS_TORCH
 
     for fold, (tr_idx, va_idx) in enumerate(gkf.split(Xn, Y, groups)):
+        ckpt_file = ckpt / f"fold_{fold}.npz"
+
+        # ── Resume: load completed fold from disk ────────────────────────────
+        if ckpt_file.exists():
+            data = np.load(ckpt_file)
+            oof[data["va_idx"]] = data["oof_va"]
+            val_fold_preds.append(data["val_preds"])
+            if verbose:
+                print(f"  Fold {fold + 1}/{N_FOLDS} — loaded from checkpoint ✓", flush=True)
+            continue
+
         if verbose:
             print(f"  Fold {fold + 1}/{N_FOLDS}  ({time.time() - t0:.0f}s) ...", end=" ", flush=True)
 
@@ -272,19 +292,26 @@ def train_and_predict(
                         __import__("torch").tensor(Xt_v, dtype=__import__("torch").float32).to(device),
                         __import__("torch").tensor(Xi_v, dtype=__import__("torch").float32).to(device),
                     ).cpu().float().numpy()
-                val_fold_preds.append(vp)
+                # Save model weights alongside predictions
+                __import__("torch").save(model.state_dict(), ckpt / f"fold_{fold}_weights.pt")
                 if verbose:
                     print("transformer", flush=True)
-                continue
             except Exception as exc:
                 warnings.warn(f"Fold {fold + 1} transformer failed ({exc!r}); switching to MLP.")
                 use_torch = False
 
-        oof_va, vp = _fit_fold_mlp(Xn, Xt, Xi, Y, tr_idx, va_idx, Xn_v, Xt_v, Xi_v)
-        oof[va_idx] = oof_va
+        if use_fallback or not use_torch:
+            oof_va, vp = _fit_fold_mlp(Xn, Xt, Xi, Y, tr_idx, va_idx, Xn_v, Xt_v, Xi_v)
+            oof[va_idx] = oof_va
+            if verbose:
+                print("MLP fallback", flush=True)
+
         val_fold_preds.append(vp)
+
+        # ── Save completed fold ───────────────────────────────────────────────
+        np.savez(ckpt_file, va_idx=va_idx, oof_va=oof_va, val_preds=vp)
         if verbose:
-            print("MLP fallback", flush=True)
+            print(f"    → saved to {ckpt_file}", flush=True)
 
     val_preds = np.clip(np.nanmean(val_fold_preds, axis=0), 0, None)
 
