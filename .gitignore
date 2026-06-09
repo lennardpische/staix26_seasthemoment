@@ -10,4 +10,3 @@ __pycache__/
 train/
 val/
 data/
-initial.ipynb

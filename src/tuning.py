@@ -24,6 +24,11 @@ def make_xgb_objective(X_train, y_train, num_folds):
     """
     Constructs an objective function using specified data to pass to Optuna study
     """
+    # Convert to categorical just in case
+    cat_cols = ["period_id", "jurisdiction", "region", "text_presence"]
+
+    for col in cat_cols:
+        X_train[col] = X_train[col].astype("category")
 
     def xgb_objective(trial):
         """
@@ -43,6 +48,7 @@ def make_xgb_objective(X_train, y_train, num_folds):
             "n_estimators": 5000,
             "early_stopping_rounds": 50,
             "random_state": 111,
+            "tree_method": "hist",
             "enable_categorical": True, # native handling
 
             # Tunable
@@ -61,20 +67,20 @@ def make_xgb_objective(X_train, y_train, num_folds):
 
         # Find groups
         groups = X_train["period_id"]
+        X_train_new = X_train.drop(columns = "period_id")
 
         # Initialize k-fold CV splitter
         cv = GroupKFold(
             n_splits = num_folds,
             shuffle = True,
             random_state = 111,
-            groups = groups
         )
 
         # Store MAE across folds
         scores = []
 
         # Manual loop for each fold
-        for train_idx, val_idx in cv.split(X_train, y_train):
+        for train_idx, val_idx in cv.split(X_train_new, y_train, groups = groups):
 
             # Load the train/val sets for the current fold
             X_train_curr = X_train.iloc[train_idx]
@@ -86,7 +92,7 @@ def make_xgb_objective(X_train, y_train, num_folds):
             model = xgb.XGBRegressor(**params)
 
             # Train the model and predict on current validation set
-            model.fit(X_train_curr, y_train_curr, eval_set = [(X_val_curr, y_val_curr)])
+            model.fit(X_train_curr, y_train_curr, eval_set = [(X_val_curr, y_val_curr)], verbose = False)
             y_pred = model.predict(X_val_curr)
 
             # Calculate MAE for current fold
@@ -99,6 +105,7 @@ def make_xgb_objective(X_train, y_train, num_folds):
         return score
 
     return xgb_objective
+
 
 def make_lgb_objective(X_train, y_train, num_folds):
     """
@@ -142,20 +149,20 @@ def make_lgb_objective(X_train, y_train, num_folds):
 
         # Find groups
         groups = X_train["period_id"]
+        X_train_new = X_train.drop(columns = "period_id")
 
         # Initialize k-fold CV splitter
         cv = GroupKFold(
             n_splits = num_folds,
             shuffle = True,
             random_state = 111,
-            groups = groups
         )
 
         # Store MAE across folds
         scores = []
 
         # Manual loop for each fold
-        for train_idx, val_idx in cv.split(X_train, y_train):
+        for train_idx, val_idx in cv.split(X_train_new, y_train, groups = groups):
 
             # Load the train/val sets for the current fold
             X_train_curr = X_train.iloc[train_idx]
@@ -171,7 +178,7 @@ def make_lgb_objective(X_train, y_train, num_folds):
                 X_train_curr,
                 y_train_curr,
                 eval_set = [(X_val_curr, y_val_curr)],
-                callbacks = [early_stopping(stopping_rounds = 50)] # early stopping
+                callbacks = [early_stopping(stopping_rounds = 50, verbose = False)] # early stopping
                 )
             y_pred = model.predict(X_val_curr)
 
@@ -202,10 +209,12 @@ def find_best_regressor(X_train, y_train, num_folds):
         best_mean_MAE : best score (mean MAE across k folds)
         best_params : best parameters winning model
     """
+    # Low verbosity
+    optuna.logging.set_verbosity(optuna.logging.WARNING)
 
     # Create median pruner
     median_pruner = optuna.pruners.MedianPruner(
-        n_startup_trials = 10, n_warmup_steps = 30, interval_steps = 10
+        n_startup_trials = 10, n_warmup_steps = 1, interval_steps = 1
     )
 
     # Initialize studies
@@ -217,8 +226,8 @@ def find_best_regressor(X_train, y_train, num_folds):
     lgb_objective = make_lgb_objective(X_train, y_train, num_folds)
 
     # Run studies
-    xgb_study.optimize(xgb_objective, n_trials = 150)
-    lgb_study.optimize(lgb_objective, n_trials = 150)
+    xgb_study.optimize(xgb_objective, n_trials = 75, n_jobs = 3)
+    lgb_study.optimize(lgb_objective, n_trials = 75, n_jobs = 3)
 
     # Store completed studies
     model_names = ["XGBoost", "LightGBM"]
