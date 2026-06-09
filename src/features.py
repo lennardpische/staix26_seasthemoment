@@ -66,10 +66,17 @@ def create_tabular_features(df):
         "WY": "Mountain",
     }
 
+    # Store trends
+    trend_cols = ["gtrends_overdose", "gtrends_fentanyl", "gtrends_naloxone", "gtrends_opioid", "gtrends_methamphetamine"]
+    trend_arr = df[trend_cols].to_numpy()
+
     # Construct features
     df["weather_extremity"] = df["temp_avg_f"] * df["precip_in"]
     df["region"] = df["jurisdiction"].map(state_to_region)
     df["region"] = df["region"].astype("category")
+    df["gtrends_total"] = np.nansum(trend_arr, axis = 1)
+    df["gtrends_max"] = np.nanmax(trend_arr, axis = 1)
+    df["gtrends_std"] = np.nanstd(trend_arr, axis = 1)
 
     return df
 
