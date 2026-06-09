@@ -52,6 +52,14 @@ def load_train_data(data_dir):
     all_opioids_df = pd.merge(X, y_all_opioids, on = join_cols, how = "right").drop(columns = ["overdose_category"])
     all_stims_df = pd.merge(X, y_all_stims, on = join_cols, how = "right").drop(columns = ["overdose_category"])
 
+    # Specify and convert categorical columns
+    cat_cols = ["period_id", "jurisdiction"]
+
+    for col in cat_cols:
+        all_drugs_df[col] = all_drugs_df[col].astype("category")
+        all_opioids_df[col] = all_opioids_df[col].astype("category")
+        all_stims_df[col] = all_stims_df[col].astype("category")
+
     return all_drugs_df, all_opioids_df, all_stims_df
 
 
