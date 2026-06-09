@@ -9,3 +9,8 @@ __pycache__/
 .DS_Store
 train/
 val/
+data/
+*.zip
+staix-challenge/
+download_data.py
+report.pdf

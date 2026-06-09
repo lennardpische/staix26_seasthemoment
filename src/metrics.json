@@ -1,0 +1,24 @@
+{
+  "timestamp": "2026-06-08T23:59:00",
+  "oof_validation": {
+    "per_category": {
+      "all_drugs": 1.8250,
+      "all_opioids": 0.8111,
+      "all_stimulants": 0.4529
+    },
+    "block_averaged_mae": 1.0297
+  },
+  "model_config": {
+    "aggressive_features": 79,
+    "robust_features": 57,
+    "n_splits": 3
+  },
+  "submission_stats": {
+    "total_predictions": 918,
+    "mean_rate": 15.185582,
+    "std_rate": 9.576772,
+    "min_rate": 3.48646,
+    "max_rate": 57.22059,
+    "median_rate": 12.202615
+  }
+}
