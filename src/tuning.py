@@ -80,6 +80,9 @@ def make_xgb_objective(X_train, y_train, num_folds):
         # Store MAE across folds
         scores = []
 
+        # Store n_estimators for each loop
+        fold_best_n_estimators = []
+
         # Manual loop for each fold
         for fold_idx, (train_idx, val_idx) in enumerate(cv.split(X_train_new, y_train, groups = groups)):
 
@@ -106,6 +109,14 @@ def make_xgb_objective(X_train, y_train, num_folds):
 
             if trial.should_prune():
               raise optuna.TrialPruned()
+            
+            # Store the best n_estimators
+            best_n_estimators = model.best_iteration + 1
+            fold_best_n_estimators.append(best_n_estimators)
+        
+        # Report mean n_estimators
+        med_n_estimators = int(round(np.median(fold_best_n_estimators)))
+        trial.set_user_attr("med_n_estimators", med_n_estimators)
 
         # Calculate mean MAE across folds
         score = np.mean(scores)
@@ -113,6 +124,35 @@ def make_xgb_objective(X_train, y_train, num_folds):
         return score
 
     return xgb_objective
+
+
+def tune_xgb(X_train, y_train, num_folds):
+    """
+    Tune a XGBoost regressor model
+    """
+    # Create median pruner
+    median_pruner = optuna.pruners.MedianPruner(
+        n_startup_trials = 10, n_warmup_steps = 2, interval_steps = 1
+    )
+
+    # Initialize studiy and objective
+    study = optuna.create_study(direction = "minimize", pruner = median_pruner)
+    objective = make_xgb_objective(X_train, y_train, num_folds)
+
+    # Minimize MAE
+    study.optimize(objective, n_trials = 45, n_jobs = 1)
+    
+    # Return study
+    best_trial = study.best_trial
+
+    best_mae = study.best_value
+    best_params = best_trial.params
+    best_n_estimators = best_trial.user_attrs["med_n_estimators"]
+
+    # Add n_estimators to param output
+    best_params["n_estimators"] = best_n_estimators
+
+    return best_params, best_mae
 
 
 def make_lgb_objective(X_train, y_train, num_folds):
@@ -214,7 +254,6 @@ def make_lgb_objective(X_train, y_train, num_folds):
         return score
 
     return lgb_objective
-
 
 
 def find_best_regressor(X_train, y_train, num_folds):
