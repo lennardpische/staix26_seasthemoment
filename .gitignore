@@ -9,3 +9,8 @@ __pycache__/
 .DS_Store
 train/
 val/
+checkpoints/
+embeddings/
+cache/
+*.pkl
+*.zip
