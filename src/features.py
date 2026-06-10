@@ -203,7 +203,7 @@ def make_nonoverlap_pattern(terms):
     return re.compile(pattern, flags = re.IGNORECASE)
 
 
-def create_text_features(df):
+def create_text_features(df, rm_text = True):
     """
     Function to construct new features from text column.
     """
@@ -275,7 +275,8 @@ def create_text_features(df):
     df["any_drug_mentions"] = text.str.count(any_drug_pattern)   
 
     # Drop the original text column
-    df = df.drop(columns = ["state_doh_release"])
+    if rm_text:
+        df = df.drop(columns = ["state_doh_release"])
 
     return df
 
@@ -394,7 +395,7 @@ def create_rolling_features(df):
     return df
 
 
-def create_all_features(cov_df, imgs, img_names):
+def create_all_features(cov_df, imgs, img_names, rm_text = True):
     """
     Wrapper for the entire feature engineering pipeline
 
@@ -405,7 +406,7 @@ def create_all_features(cov_df, imgs, img_names):
     """
     # Create tabular and text features
     df = create_tabular_features(cov_df)
-    df = create_text_features(df)
+    df = create_text_features(df, rm_text = rm_text)
 
     # Remove image background and add image features
     cleaned_imgs = [remove_border(img) for img in imgs]
