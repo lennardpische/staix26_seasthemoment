@@ -66,6 +66,103 @@ def create_tabular_features(df):
         "WY": "Mountain",
     }
 
+    # Mapping from period_id to date
+    id_to_date = {
+        "uTjgI1Sv": "2019-01-31",
+        "wf016pk5": "2019-02-28",
+        "BkTW58Ff": "2019-03-31",
+        "shDD7wDP": "2019-04-30",
+        "aZFXT65l": "2019-05-31",
+        "fizSTkFs": "2019-06-30",
+        "wQLd1SNL": "2019-07-31",
+        "kmxcVN2e": "2019-08-31",
+        "x24Jbzaz": "2019-09-30",
+        "FuLb1kk4": "2019-10-31",
+        "1Tl9271R": "2019-11-30",
+        "Fj7ebbrB": "2019-12-31",
+        "h9Re4kM3": "2020-01-31",
+        "gqVDbZc7": "2020-02-29",
+        "UKjQnuej": "2020-03-31",
+        "TedmliP4": "2020-04-30",
+        "PJu8Wb2C": "2020-05-31",
+        "mZcpe0Ud": "2020-06-30",
+        "NOtvYKB9": "2020-07-31",
+        "YBlSTfgc": "2020-08-31",
+        "rX3aMRGn": "2020-09-30",
+        "44RA6kMl": "2020-10-31",
+        "88NtGYTF": "2020-11-30",
+        "tVb8fHGc": "2020-12-31",
+        "aHT3VIho": "2021-01-31",
+        "a239r7U4": "2021-02-28",
+        "kTaI18at": "2021-03-31",
+        "FZxIVFvr": "2021-04-30",
+        "27DK2m8F": "2021-05-31",
+        "y5ysDDpd": "2021-06-30",
+        "NWU8bRHI": "2021-07-31",
+        "3JILuYCd": "2021-08-31",
+        "56aULHvm": "2021-09-30",
+        "KDy1VIvO": "2021-10-31",
+        "j1dZWmlF": "2021-11-30",
+        "OugqP9RF": "2021-12-31",
+        "4VCAqmuO": "2022-01-31",
+        "nICRHvl9": "2022-02-28",
+        "omhpgEVm": "2022-03-31",
+        "WB9kCj4E": "2022-04-30",
+        "iIi2mgES": "2022-05-31",
+        "CDQGTxV0": "2022-06-30",
+        "ePA08XXo": "2022-07-31",
+        "MZ0ENeKD": "2022-08-31",
+        "4MVfmuye": "2022-09-30",
+        "N81HwK1a": "2022-10-31",
+        "QpWgWZqu": "2022-11-30",
+        "68B5zQl0": "2022-12-31",
+        "BhtGJhRU": "2023-01-31",
+        "9Dp3l3qq": "2023-02-28",
+        "LALpfR23": "2023-03-31",
+        "wa7tAVQg": "2023-04-30",
+        "eVeAG5UX": "2023-05-31",
+        "0Un18Xny": "2023-06-30",
+        "9FQthr9A": "2023-07-31",
+        "xtjIUpyk": "2023-08-31",
+        "yIHgtqjY": "2023-09-30",
+        "DpR0556d": "2023-10-31",
+        "lSdEh765": "2023-11-30",
+        "7cCeqHbf": "2023-12-31",
+        "OqDkgaDk": "2024-01-31",
+        "k4mmkR0U": "2024-02-29",
+        "63zxcdKZ": "2024-03-31",
+        "S2Qn2n8u": "2024-04-30",
+        "i9aSkhZb": "2024-05-31",
+        "UJgFAh3i": "2024-06-30",
+        "OIpwoBOI": "2024-07-31",
+        "lfTz14iT": "2024-08-31",
+        "3CdEQbdr": "2024-09-30",
+        "Kk6iVNym": "2024-10-31",
+        "tLoy7Zpr": "2024-11-30",
+        "S1xSdqr5": "2024-12-31",
+        "Hy8SBtar": "2025-01-31",
+        "rle4IZEn": "2025-02-28",
+        "5Lptd03a": "2025-03-31",
+        "jtUOZLP4": "2025-04-30",
+        "dp3VfN8B": "2025-05-31",
+        "dsZhPyK4": "2025-06-30",
+        "aL5zkp6g": "2025-07-31",
+        "yFh3wzPe": "2025-08-31",
+        "lXSJn8AD": "2025-09-30",
+        "kbpS9xmS": "2025-10-31",
+        "DmKNJoJt": "2025-11-30",
+        "if5b8Sut": "2025-12-31",
+        "WNFmh9iQ": "2026-01-31",
+        "myO2m6ax": "2026-02-28",
+        "fN5pFXQU": "2026-03-31",
+        "Ja22UVH5": "2026-04-30",
+        "JuylH0n8": "2026-05-31",
+        "E8YQntpd": "2026-06-30",
+    }
+    
+    # Store date
+    df["date"] = pd.to_datetime(df["period_id"].map(id_to_date))
+                     
     # Store trends
     trend_cols = ["gtrends_overdose", "gtrends_fentanyl", "gtrends_naloxone", "gtrends_opioid", "gtrends_methamphetamine"]
     trend_arr = df[trend_cols].to_numpy()
@@ -253,6 +350,48 @@ def create_img_features(cov_df, imgs, img_names):
     df = pd.merge(cov_df, img_df, on = ["period_id", "jurisdiction"], how = "left")
 
     return df
+\
+
+def create_rolling_features(df):
+    """
+    Construct rolling image and std features for each variable
+    """
+    # Sort by jurisdiction and date
+    df = df.sort_values(["jurisdiction", "date"]).copy()
+
+    # Columns for rolling statistics
+    rolling_cols = [
+        "unemployment_rate",
+        "temp_avg_f",
+        "precip_in",
+        "gtrends_overdose",
+        "gtrends_fentanyl",
+        "gtrends_naloxone",
+        "gtrends_opioid",
+        "gtrends_methamphetamine",
+        "gtrends_total",
+        "gtrends_max",
+        "gtrends_std",
+        "any_drug_mentions"
+    ]
+
+    # Rolling means by state
+    for col in rolling_cols:
+        for window in [3, 12]:
+            df[f"{col}_rolling_mean_{window}"] = (
+                df.groupby("jurisdiction")[col]
+                .transform(lambda s: s.shift(1).rolling(window, min_periods = 1).mean())
+            )
+    
+    # Rolling stds by state
+    for col in rolling_cols:
+        for window in [3, 12]:
+            df[f"{col}_rolling_mean_{window}"] = (
+                df.groupby("jurisdiction")[col]
+                .transform(lambda s: s.shift(1).rolling(window, min_periods = 1).std())
+            )
+
+    return df
 
 
 def create_all_features(cov_df, imgs, img_names):
@@ -271,6 +410,9 @@ def create_all_features(cov_df, imgs, img_names):
     # Remove image background and add image features
     cleaned_imgs = [remove_border(img) for img in imgs]
     df = create_img_features(df, cleaned_imgs, img_names)
+
+    # Create rolling features
+    df = create_rolling_features(df)
 
     return df
 
