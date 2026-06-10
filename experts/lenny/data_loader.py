@@ -14,9 +14,16 @@ def _find_data_root() -> Path:
     kaggle = Path("/kaggle/input/staix-challenge")
     if kaggle.exists():
         return kaggle
-    local = Path(__file__).parent.parent
-    if (local / "train" / "dose_sys_train.csv").exists():
-        return local
+    # Search the working directory and every ancestor of this file. This module
+    # lives under experts/lenny/, so the dataset at the repo root is several
+    # levels up — walk until train/dose_sys_train.csv appears.
+    seen = set()
+    for c in [Path.cwd(), *Path.cwd().parents, *Path(__file__).resolve().parents]:
+        if c in seen:
+            continue
+        seen.add(c)
+        if (c / "train" / "dose_sys_train.csv").exists():
+            return c
     raise FileNotFoundError("Cannot locate data root. Expected 'train/dose_sys_train.csv'.")
 
 
