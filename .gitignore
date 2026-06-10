@@ -1,5 +1,4 @@
 submission.csv
-expert_*.csv
 catboost_info/
 __pycache__/
 *.pyc
@@ -14,3 +13,5 @@ data/
 staix-challenge/
 download_data.py
 report.pdf
+
+!src/expert_jasmine.csv
