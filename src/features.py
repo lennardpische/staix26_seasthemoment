@@ -42,6 +42,8 @@ _RAW_NUMERICS = [
 _ENGINEERED = [
     "log_labor_force", "census_division", "period_rank",
     "gtrends_fentanyl_x_opioid", "gtrends_overdose_x_naloxone",
+    # Real date features — populated when period_id_map.json is present
+    "year", "month", "quarter", "month_sin", "month_cos", "months_since_covid",
 ]
 
 N_TEXT = 32
@@ -175,6 +177,8 @@ class FeaturePipeline:
             "gtrends_overdose", "gtrends_fentanyl", "gtrends_naloxone",
             "gtrends_opioid", "gtrends_methamphetamine",
             "state_doh_release", "period_rank",
+            # Date features from period_id_map.json (NaN when map absent)
+            "year", "month", "quarter", "month_sin", "month_cos", "months_since_covid",
         ]
 
         # One row per (period_id × jurisdiction) — covariates are identical across categories
