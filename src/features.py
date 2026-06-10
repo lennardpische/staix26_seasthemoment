@@ -373,7 +373,7 @@ def create_rolling_features(df):
         "gtrends_total",
         "any_drug_mentions",
         "opioid_mentions",
-        "stim_mentions",
+        "stimulant_mentions",
     ]
 
     # Rolling means by state
@@ -500,7 +500,7 @@ def create_rolling_features_for_validation(
             "gtrends_total",
             "any_drug_mentions",
             "opioid_mentions",
-            "stim_mentions",
+            "stimulant_mentions",
         ]
     train_history_df = train_history_df.copy()
     val_df = val_df.copy()
