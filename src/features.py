@@ -416,7 +416,7 @@ def create_all_features(cov_df, imgs, img_names, rm_text = True, rm_date = True)
     df = create_rolling_features(df)
 
     if rm_date:
-        df = df.drop(columns = ["date"])
+        df = df.drop(columns = ["date"], errors = "ignore")
 
     return df
 
@@ -566,6 +566,6 @@ def create_validation_features_from_train_df(
     )
 
     # Drop date
-    val_features = val_features.drop("date")
+    val_features = val_features.drop(columns = ["date"], errors = "ignore")
 
     return val_features
