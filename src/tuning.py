@@ -45,10 +45,11 @@ def make_xgb_objective(X_train, y_train, num_folds):
         # Define the hyperparameter search space
         params = {
             # Fixed
-            "n_estimators": 5000,
+            "n_estimators": 3000,
             "early_stopping_rounds": 50,
             "random_state": 111,
             "tree_method": "hist",
+            "device": "cuda",
             "enable_categorical": True, # native handling
 
             # Tunable
@@ -57,8 +58,8 @@ def make_xgb_objective(X_train, y_train, num_folds):
             "colsample_bytree": trial.suggest_float("colsample_bytree", 0.5, 1, step = 0.1),
             "max_depth": trial.suggest_int("max_depth", 2, 10, step = 1),
             "min_child_weight": trial.suggest_int("min_child_weight", 1, 7, step = 2),
-            "reg_alpha": trial.suggest_float("reg_alpha", 1e-8, 100, log = True),
-            "reg_lambda": trial.suggest_float("reg_lambda", 1e-8, 100, log = True),
+            "reg_alpha": trial.suggest_float("reg_alpha", 1e-6, 30, log = True),
+            "reg_lambda": trial.suggest_float("reg_lambda", 1e-6, 30, log = True),
 
             # Eval (use MAE)
             "objective": "reg:absoluteerror",
@@ -80,12 +81,12 @@ def make_xgb_objective(X_train, y_train, num_folds):
         scores = []
 
         # Manual loop for each fold
-        for train_idx, val_idx in cv.split(X_train_new, y_train, groups = groups):
+        for fold_idx, (train_idx, val_idx) in enumerate(cv.split(X_train_new, y_train, groups = groups)):
 
             # Load the train/val sets for the current fold
-            X_train_curr = X_train.iloc[train_idx]
+            X_train_curr = X_train_new.iloc[train_idx]
             y_train_curr = y_train.iloc[train_idx]
-            X_val_curr = X_train.iloc[val_idx]
+            X_val_curr = X_train_new.iloc[val_idx]
             y_val_curr = y_train.iloc[val_idx]
 
             # Initialize XGB classifier model with params
@@ -99,6 +100,13 @@ def make_xgb_objective(X_train, y_train, num_folds):
             fold_score = mean_absolute_error(y_val_curr, y_pred)
             scores.append(fold_score)
 
+            # Pruner
+            intermediate_score = np.mean(scores)
+            trial.report(intermediate_score, step = fold_idx)
+
+            if trial.should_prune():
+              raise optuna.TrialPruned()
+
         # Calculate mean MAE across folds
         score = np.mean(scores)
 
@@ -111,6 +119,11 @@ def make_lgb_objective(X_train, y_train, num_folds):
     """
     Constructs an objective function using specified data to pass to Optuna study
     """
+    # Convert to categorical just in case
+    cat_cols = ["period_id", "jurisdiction", "region", "text_presence"]
+
+    for col in cat_cols:
+        X_train[col] = X_train[col].astype("category")
 
     def lgb_objective(trial):
         """
@@ -127,24 +140,26 @@ def make_lgb_objective(X_train, y_train, num_folds):
         # Define the hyperparameter search space
         params = {
             # Fixed
-            "n_estimators": 5000,
+            "n_estimators": 2000,
             "random_state": 111,
             "bagging_freq": 1,
+            "device_type": "gpu",
+            "verbose": -1,
 
             # Tunable
-            "num_leaves": trial.suggest_int("num_leaves", 31, 1023, log = True),
-            "min_data_in_leaf": trial.suggest_int("min_data_in_leaf", 10, 150),
+            "num_leaves": trial.suggest_int("num_leaves", 8, 63, log = True),
+            "min_data_in_leaf": trial.suggest_int("min_data_in_leaf", 5, 60),
             "learning_rate": trial.suggest_float("learning_rate", 0.001, 0.1, log = True),
             "subsample": trial.suggest_float("subsample", 0.5, 1, step = 0.1),
             "colsample_bytree": trial.suggest_float("colsample_bytree", 0.5, 1, step = 0.1),
             "max_depth": trial.suggest_int("max_depth", 6, 10, step = 1),
             "min_child_weight": trial.suggest_int("min_child_weight", 1, 7, step = 2),
-            "reg_alpha": trial.suggest_float("reg_alpha", 1e-8, 100, log = True),
-            "reg_lambda": trial.suggest_float("reg_lambda", 1e-8, 100, log = True),
+            "reg_alpha": trial.suggest_float("reg_alpha", 1e-6, 10, log = True),
+            "reg_lambda": trial.suggest_float("reg_lambda", 1e-6, 10, log = True),
 
             # Eval (use MAE)
             "objective": "regression_l1",
-            "eval_metric": "mae"
+            "metric": "mae"
         }
 
         # Find groups
@@ -162,12 +177,12 @@ def make_lgb_objective(X_train, y_train, num_folds):
         scores = []
 
         # Manual loop for each fold
-        for train_idx, val_idx in cv.split(X_train_new, y_train, groups = groups):
+        for fold_idx, (train_idx, val_idx) in enumerate(cv.split(X_train_new, y_train, groups = groups)):
 
             # Load the train/val sets for the current fold
-            X_train_curr = X_train.iloc[train_idx]
+            X_train_curr = X_train_new.iloc[train_idx]
             y_train_curr = y_train.iloc[train_idx]
-            X_val_curr = X_train.iloc[val_idx]
+            X_val_curr = X_train_new.iloc[val_idx]
             y_val_curr = y_train.iloc[val_idx]
 
             # Initialize XGB classifier model with params
@@ -185,6 +200,13 @@ def make_lgb_objective(X_train, y_train, num_folds):
             # Calculate MAE for current fold
             fold_score = mean_absolute_error(y_val_curr, y_pred)
             scores.append(fold_score)
+
+            # Pruner
+            intermediate_score = np.mean(scores)
+            trial.report(intermediate_score, step = fold_idx)
+
+            if trial.should_prune():
+              raise optuna.TrialPruned()
 
         # Calculate mean MAE across folds
         score = np.mean(scores)
@@ -209,12 +231,10 @@ def find_best_regressor(X_train, y_train, num_folds):
         best_mean_MAE : best score (mean MAE across k folds)
         best_params : best parameters winning model
     """
-    # Low verbosity
-    optuna.logging.set_verbosity(optuna.logging.WARNING)
 
     # Create median pruner
     median_pruner = optuna.pruners.MedianPruner(
-        n_startup_trials = 10, n_warmup_steps = 1, interval_steps = 1
+        n_startup_trials = 10, n_warmup_steps = 2, interval_steps = 1
     )
 
     # Initialize studies
@@ -226,8 +246,8 @@ def find_best_regressor(X_train, y_train, num_folds):
     lgb_objective = make_lgb_objective(X_train, y_train, num_folds)
 
     # Run studies
-    xgb_study.optimize(xgb_objective, n_trials = 75, n_jobs = 3)
-    lgb_study.optimize(lgb_objective, n_trials = 75, n_jobs = 3)
+    lgb_study.optimize(lgb_objective, n_trials = 45, n_jobs = 1)
+    xgb_study.optimize(xgb_objective, n_trials = 45, n_jobs = 1)
 
     # Store completed studies
     model_names = ["XGBoost", "LightGBM"]
