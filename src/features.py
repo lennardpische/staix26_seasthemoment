@@ -351,7 +351,7 @@ def create_img_features(cov_df, imgs, img_names):
     df = pd.merge(cov_df, img_df, on = ["period_id", "jurisdiction"], how = "left")
 
     return df
-\
+
 
 def create_rolling_features(df):
     """
@@ -417,6 +417,49 @@ def create_all_features(cov_df, imgs, img_names, rm_text = True, rm_date = True)
 
     if rm_date:
         df = df.drop(columns = ["date"], errors = "ignore")
+
+    return df
+
+
+def drop_existing_engineered_cols(df):
+    """
+    Remove engineered columns that may be duplicated if feature functions
+    are accidentally run more than once.
+    """
+    df = df.copy()
+
+    exact_cols_to_drop = [
+        "weather_extremity",
+        "region",
+        "gtrends_total",
+        "gtrends_max",
+        "gtrends_std",
+        "text_presence",
+        "num_char",
+        "num_numeric",
+        "stat_mentions",
+        "opioid_mentions",
+        "stimulant_mentions",
+        "any_drug_mentions",
+        "mean_intensity",
+        "median_intensity",
+        "std_intensity",
+        "max_intensity",
+        "num_hotspots",
+        "frac_above_mean",
+    ]
+
+    rolling_cols_to_drop = [
+        col for col in df.columns
+        if "_rolling_mean_" in col or "_rolling_std_" in col
+    ]
+
+    cols_to_drop = exact_cols_to_drop + rolling_cols_to_drop
+
+    df = df.drop(columns=cols_to_drop, errors="ignore")
+
+    # Remove duplicate column names if they already exist
+    df = df.loc[:, ~df.columns.duplicated()].copy()
 
     return df
 
@@ -522,20 +565,17 @@ def create_validation_features_from_train_df(
     """
     Create validation features using a full training X + y dataframe as history.
 
-    Args:
-        train_df        : Full training dataframe, including X + y.
-                          Should contain period_id, jurisdiction, covariates,
-                          overdose_category, and rate_per_10000_ed_visits.
-        val_cov_df      : Validation covariates dataframe.
-        train_imgs      : Training images as grayscale arrays.
-        train_img_names : Training image names.
-        val_imgs        : Validation images as grayscale arrays.
-        val_img_names   : Validation image names.
-
-    Returns:
-        val_features : Validation dataframe with tabular, text, image,
-                       and rolling covariate features.
+    This version avoids duplicated engineered columns by stripping old engineered
+    columns before recomputing features.
     """
+
+    # Defensive copies
+    train_df = train_df.copy()
+    val_cov_df = val_cov_df.copy()
+
+    # Remove engineered columns if these dataframes have already been processed
+    train_df = drop_existing_engineered_cols(train_df)
+    val_cov_df = drop_existing_engineered_cols(val_cov_df)
 
     # Build base training features from full X + y dataframe
     train_base = create_tabular_features(train_df)
@@ -559,10 +599,29 @@ def create_validation_features_from_train_df(
         val_img_names,
     )
 
+    # Drop duplicate columns before concat
+    train_base = train_base.loc[:, ~train_base.columns.duplicated()].copy()
+    val_base = val_base.loc[:, ~val_base.columns.duplicated()].copy()
+
     # Compute validation rolling features using full training feature history
     val_features = create_rolling_features_for_validation(
         train_history_df=train_base,
         val_df=val_base,
     )
+
+    # Validation should not have target column
+    val_features = val_features.drop(
+        columns=["rate_per_10000_ed_visits"],
+        errors="ignore",
+    )
+
+    # Remove date if you do not want to feed it into the model
+    val_features = val_features.drop(
+        columns=["date"],
+        errors="ignore",
+    )
+
+    # Final duplicate-column guard
+    val_features = val_features.loc[:, ~val_features.columns.duplicated()].copy()
 
     return val_features
