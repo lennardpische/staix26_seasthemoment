@@ -139,3 +139,11 @@ def load_val_pngs(data_dir):
     img_names = [name.replace(".png", "") for name in img_names]
 
     return img_arrs, img_names
+
+
+def load_sample_submission(data_dir):
+
+    path = data_dir / "sample_submission.csv"
+    df = pd.read_csv(path).drop(columns = ["rate_per_10000_ed_visits"])
+
+    return df
