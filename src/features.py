@@ -507,8 +507,8 @@ def create_rolling_features_for_validation(
     return val_with_rolling
 
 
-def create_validation_features(
-    train_cov_df,
+def create_validation_features_from_train_df(
+    train_df,
     val_cov_df,
     train_imgs,
     train_img_names,
@@ -516,27 +516,25 @@ def create_validation_features(
     val_img_names,
 ):
     """
-    Create validation features using training history for rolling statistics.
-
-    This should be used instead of create_all_features(...) for validation,
-    because validation alone does not contain enough past rows to compute
-    useful rolling statistics.
+    Create validation features using a full training X + y dataframe as history.
 
     Args:
-        train_cov_df     : Training covariates dataframe.
-        val_cov_df       : Validation covariates dataframe.
-        train_imgs       : Training images as grayscale arrays.
-        train_img_names  : Training image names.
-        val_imgs         : Validation images as grayscale arrays.
-        val_img_names    : Validation image names.
+        train_df        : Full training dataframe, including X + y.
+                          Should contain period_id, jurisdiction, covariates,
+                          overdose_category, and rate_per_10000_ed_visits.
+        val_cov_df      : Validation covariates dataframe.
+        train_imgs      : Training images as grayscale arrays.
+        train_img_names : Training image names.
+        val_imgs        : Validation images as grayscale arrays.
+        val_img_names   : Validation image names.
 
     Returns:
         val_features : Validation dataframe with tabular, text, image,
-                       and rolling features.
+                       and rolling covariate features.
     """
 
-    # Build base training features, excluding rolling features
-    train_base = create_tabular_features(train_cov_df)
+    # Build base training features from full X + y dataframe
+    train_base = create_tabular_features(train_df)
     train_base = create_text_features(train_base)
 
     cleaned_train_imgs = [remove_border(img) for img in train_imgs]
@@ -546,7 +544,7 @@ def create_validation_features(
         train_img_names,
     )
 
-    # Build base validation features, excluding rolling features
+    # Build base validation features
     val_base = create_tabular_features(val_cov_df)
     val_base = create_text_features(val_base)
 
@@ -557,7 +555,7 @@ def create_validation_features(
         val_img_names,
     )
 
-    # Compute validation rolling features using training history
+    # Compute validation rolling features using full training feature history
     val_features = create_rolling_features_for_validation(
         train_history_df=train_base,
         val_df=val_base,
