@@ -417,3 +417,150 @@ def create_all_features(cov_df, imgs, img_names):
     return df
 
 
+def create_rolling_features_for_validation(
+    train_history_df,
+    val_df,
+    rolling_cols = None,
+    windows = (3, 12),
+    group_col = "jurisdiction",
+    date_col = "date",
+):
+    """
+    Compute rolling features for validation rows using prior training history
+
+    Args:
+        train_history_df : Feature-engineered training dataframe with past rows
+        val_df           : Feature-engineered validation dataframe without rolling features
+        rolling_cols     : Columns to compute rolling stats for
+        windows          : Rolling window sizes
+        group_col        : Usually "jurisdiction"
+        date_col         : Usually "date"
+
+    Returns:
+        val_with_rolling : Validation dataframe with rolling mean/std features.
+    """
+
+    if rolling_cols is None:
+        rolling_cols = [
+            "unemployment_rate",
+            "temp_avg_f",
+            "precip_in",
+            "gtrends_overdose",
+            "gtrends_fentanyl",
+            "gtrends_naloxone",
+            "gtrends_opioid",
+            "gtrends_methamphetamine",
+            "gtrends_total",
+            "gtrends_max",
+            "gtrends_std",
+            "any_drug_mentions",
+        ]
+
+    train_history_df = train_history_df.copy()
+    val_df = val_df.copy()
+
+    # Mark source so we can recover validation rows later
+    train_history_df["_is_val"] = 0
+    val_df["_is_val"] = 1
+
+    # Combine train history + validation
+    combined = pd.concat(
+        [train_history_df, val_df],
+        axis=0,
+        ignore_index=True,
+        sort=False,
+    )
+
+    # Sort chronologically within each jurisdiction
+    combined = combined.sort_values([group_col, date_col]).copy()
+
+    # Compute rolling means and stds using only previous rows
+    for col in rolling_cols:
+        if col not in combined.columns:
+            continue
+
+        for window in windows:
+            combined[f"{col}_rolling_mean_{window}"] = (
+                combined.groupby(group_col)[col]
+                .transform(
+                    lambda s: s.shift(1)
+                    .rolling(window=window, min_periods=1)
+                    .mean()
+                )
+            )
+
+            combined[f"{col}_rolling_std_{window}"] = (
+                combined.groupby(group_col)[col]
+                .transform(
+                    lambda s: s.shift(1)
+                    .rolling(window=window, min_periods=1)
+                    .std()
+                )
+            )
+
+    # Return only validation rows
+    val_with_rolling = combined[combined["_is_val"] == 1].copy()
+
+    # Clean helper column
+    val_with_rolling = val_with_rolling.drop(columns=["_is_val"])
+
+    return val_with_rolling
+
+
+def create_validation_features(
+    train_cov_df,
+    val_cov_df,
+    train_imgs,
+    train_img_names,
+    val_imgs,
+    val_img_names,
+):
+    """
+    Create validation features using training history for rolling statistics.
+
+    This should be used instead of create_all_features(...) for validation,
+    because validation alone does not contain enough past rows to compute
+    useful rolling statistics.
+
+    Args:
+        train_cov_df     : Training covariates dataframe.
+        val_cov_df       : Validation covariates dataframe.
+        train_imgs       : Training images as grayscale arrays.
+        train_img_names  : Training image names.
+        val_imgs         : Validation images as grayscale arrays.
+        val_img_names    : Validation image names.
+
+    Returns:
+        val_features : Validation dataframe with tabular, text, image,
+                       and rolling features.
+    """
+
+    # Build base training features, excluding rolling features
+    train_base = create_tabular_features(train_cov_df)
+    train_base = create_text_features(train_base)
+
+    cleaned_train_imgs = [remove_border(img) for img in train_imgs]
+    train_base = create_img_features(
+        train_base,
+        cleaned_train_imgs,
+        train_img_names,
+    )
+
+    # Build base validation features, excluding rolling features
+    val_base = create_tabular_features(val_cov_df)
+    val_base = create_text_features(val_base)
+
+    cleaned_val_imgs = [remove_border(img) for img in val_imgs]
+    val_base = create_img_features(
+        val_base,
+        cleaned_val_imgs,
+        val_img_names,
+    )
+
+    # Compute validation rolling features using training history
+    val_features = create_rolling_features_for_validation(
+        train_history_df=train_base,
+        val_df=val_base,
+    )
+
+    return val_features
