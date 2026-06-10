@@ -386,7 +386,7 @@ def create_rolling_features(df):
     # Rolling stds by state
     for col in rolling_cols:
         for window in [3, 12]:
-            df[f"{col}_rolling_mean_{window}"] = (
+            df[f"{col}_rolling_std_{window}"] = (
                 df.groupby("jurisdiction")[col]
                 .transform(lambda s: s.shift(1).rolling(window, min_periods = 1).std())
             )
