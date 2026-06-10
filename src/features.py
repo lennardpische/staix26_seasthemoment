@@ -416,7 +416,7 @@ def create_all_features(cov_df, imgs, img_names, rm_text = True, rm_date = True)
     df = create_rolling_features(df)
 
     if rm_date:
-        df = df.drop("date")
+        df = df.drop(columns = ["date"])
 
     return df
 
