@@ -2,7 +2,7 @@
 
 ## Overview
 
-This repository contains a tree-based machine learning pipeline for the **STAI-X 2026 Challenge**, which predicts **suspected nonfatal overdose ED visits per 10,000 ED visits** across U.S. jurisdictions.
+This repository contains a tree-based machine learning pipeline for the **STAI-X 2026 Challenge** in order to predict **suspected nonfatal overdose ED visits per 10,000 ED visits** across U.S. jurisdictions.
 
 The solution combines:
 
@@ -33,7 +33,7 @@ for every `(period_id, jurisdiction, overdose_category)` combination in the vali
 * `all_opioids`
 * `all_stimulants`
 
-Models are trained independently for each category.
+Independent models are trained  for each category.
 
 ---
 
@@ -226,8 +226,7 @@ rate_per_10000_ed_visits
 ## Key Design Principles
 
 * Category-specific modeling
-* Leakage-resistant validation
-* Multimodal feature integration
-* Temporal trend extraction
+* Leakage-resistant validation grouped by period_id
+* Temporal trend extraction over short and long timeframes
 * Strong tabular-learning performance
 * Simple, reproducible, and scalable architecture
