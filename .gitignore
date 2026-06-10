@@ -1,5 +1,5 @@
 submission.csv
-expert_*.csv
+# expert_*.csv  — committed intentionally per team convention
 catboost_info/
 __pycache__/
 *.pyc
