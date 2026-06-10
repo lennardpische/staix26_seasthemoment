@@ -395,7 +395,7 @@ def create_rolling_features(df):
     return df
 
 
-def create_all_features(cov_df, imgs, img_names, rm_text = True):
+def create_all_features(cov_df, imgs, img_names, rm_text = True, rm_date = True):
     """
     Wrapper for the entire feature engineering pipeline
 
@@ -414,6 +414,9 @@ def create_all_features(cov_df, imgs, img_names, rm_text = True):
 
     # Create rolling features
     df = create_rolling_features(df)
+
+    if rm_date:
+        df = df.drop("date")
 
     return df
 
@@ -561,5 +564,8 @@ def create_validation_features_from_train_df(
         train_history_df=train_base,
         val_df=val_base,
     )
+
+    # Drop date
+    val_features = val_features.drop("date")
 
     return val_features
