@@ -9,6 +9,10 @@ __pycache__/
 .DS_Store
 train/
 val/
+# Award B: data/ must be EMPTY at submission — never commit its contents
+data/*
+!data/.gitkeep
+report.pdf
 checkpoints/
 embeddings/
 cache/

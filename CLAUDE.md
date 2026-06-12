@@ -4,6 +4,17 @@ When given the prompt **"Do the data analysis"**, follow this workflow exactly.
 This specification is domain-agnostic and will work on any dataset that follows
 the folder layout described in `data/DATA_DESCRIPTION.md` (or `Data_Description.md`).
 
+> **Scope.** This workflow is self-contained. **Ignore `experts/` and
+> `SEAStheMoment_STAIX26_submission.ipynb`** — those are the Award A Kaggle
+> submission, hardcoded to the original overdose domain. Do **not** reuse their
+> features or models here; the held-out dataset may be a different domain. Build
+> everything below from the data in `data/` alone.
+
+> **Environment.** CPU-only, no GPU. Network is available for installing Python
+> packages but **must not** be used to download any external dataset. Before
+> step 2, make sure the libraries are importable; install any that are missing:
+> `pip install -q lightgbm xgboost catboost reportlab scikit-learn matplotlib seaborn`.
+
 ---
 
 ## Hard constraints
@@ -82,16 +93,18 @@ Report mean OOF metric across all groups — this is the competition metric.
 ### 6 — Write submission.csv
 
 ```python
-submission = template[['row_id']].copy()  # always start from template
+# target_col and the id/key columns come from DATA_DESCRIPTION.md — never hardcode them
+submission = template[[id_col]].copy()         # always start from the template
 # ... merge predictions ...
-submission['rate_per_10000_ed_visits'] = preds.clip(lower=0)
-# Fill any remaining NaN with jurisdiction-category median from train
+submission[target_col] = preds.clip(lower=0)   # clip only if the target is a non-negative rate
+# Fill any remaining NaN with the per-group (or global) median from train
 assert submission.isna().sum().sum() == 0, "NaN in submission"
 assert len(submission) == len(template), "Row count mismatch"
 submission.to_csv('submission.csv', index=False)
 ```
 
-Two columns only: `row_id`, target column. No extras.
+Two columns only: the id column and the target column, exactly as named in
+`DATA_DESCRIPTION.md`. No extras.
 
 ### 7 — Write report.pdf
 
