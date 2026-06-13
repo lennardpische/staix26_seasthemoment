@@ -24,11 +24,24 @@ TEXT_MODEL = "all-mpnet-base-v2"   # 768-dim, strong semantic quality
 IMAGE_MODEL = "efficientnet_b2"    # 1408-dim after global avg pool
 IMAGE_SIZE = 224
 
+# Pretrained weights uploaded as a public Kaggle dataset (see notebook section 3a).
+# When present, models load from here offline so Kaggle's no-internet runner can
+# reproduce the submission; otherwise we fall back to a normal HF Hub download.
+KAGGLE_MODELS_DIR = Path("/kaggle/input/staix-pretrained-models")
+
+if KAGGLE_MODELS_DIR.exists():
+    # On the offline Kaggle runner: forbid any HF Hub network call so a stale
+    # cache miss fails loudly instead of silently hanging on a download.
+    import os
+    os.environ.setdefault("HF_HUB_OFFLINE", "1")
+    os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
+
 
 def vectorize_text(texts: list[str], model_name: str = TEXT_MODEL, batch_size: int = 64) -> np.ndarray:
     """Encode a list of strings with a sentence-transformer. Shape: (N, 768)."""
     from sentence_transformers import SentenceTransformer
-    model = SentenceTransformer(model_name)
+    local = KAGGLE_MODELS_DIR / "mpnet"
+    model = SentenceTransformer(str(local) if local.exists() else model_name)
     embeddings = model.encode(
         texts,
         batch_size=batch_size,
@@ -57,7 +70,13 @@ def vectorize_images(
     from torchvision import transforms
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    model = timm.create_model(model_name, pretrained=True, num_classes=0)  # remove classifier
+    weights = KAGGLE_MODELS_DIR / "effb2.pth"
+    if weights.exists():
+        # Offline path (Kaggle): build the architecture, then load uploaded weights.
+        model = timm.create_model(model_name, pretrained=False, num_classes=0)
+        model.load_state_dict(torch.load(weights, map_location="cpu"))
+    else:
+        model = timm.create_model(model_name, pretrained=True, num_classes=0)  # remove classifier
     model = model.to(device).eval()
 
     cfg = timm.data.resolve_model_data_config(model)
